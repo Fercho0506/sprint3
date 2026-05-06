@@ -1,0 +1,71 @@
+# infra/kong/tls-plugin.yaml
+# ===========================
+# Configuración de Kong API Gateway para ASR-3.
+# Bloquea cualquier petición que llegue sin TLS.
+#
+# Aplicar con:
+#   curl -X POST http://<KONG-ADMIN>:8001/plugins \
+#        -H "Content-Type: application/json" \
+#        -d @tls-plugin.json
+#
+# O usando deck (Kong declarative config):
+#   deck sync --config tls-plugin.yaml
+
+_format_version: "3.0"
+
+plugins:
+  # Plugin 1: Termina peticiones HTTP no seguras con 403
+  - name: request-termination
+    config:
+      status_code: 403
+      message: |
+        {"error": "Comunicación no cifrada bloqueada",
+         "asr": "ASR-3",
+         "detail": "Todos los servicios deben comunicarse por HTTPS/TLS."}
+      content_type: application/json
+    protocols: ["http"]   # Solo aplica en HTTP plano, no en HTTPS
+    enabled: true
+
+  # Plugin 2: Logging de intentos de comunicación no cifrada (para métricas ASR-3)
+  - name: file-log
+    config:
+      path: /var/log/kong/non-tls-attempts.log
+      reopen: true
+    protocols: ["http"]
+    enabled: true
+
+  # Plugin 3: Forzar cabecera HSTS en todas las respuestas HTTPS
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload"
+          - "X-Content-Type-Options: nosniff"
+          - "X-Frame-Options: DENY"
+    protocols: ["https"]
+    enabled: true
+
+routes:
+  # Ruta interna de health check — permite HTTP solo desde el ALB (no desde internet)
+  - name: health-internal
+    paths: ["/health/"]
+    protocols: ["https"]
+    strip_path: false
+
+  # Ruta de reportes — solo HTTPS
+  - name: monthly-reports
+    paths: ["/reports/"]
+    protocols: ["https"]
+    strip_path: false
+
+  # Ruta de ingesta de datos cloud — solo HTTPS + HMAC (ASR-2 + ASR-3)
+  - name: cloud-data-ingest
+    paths: ["/cloud-data/"]
+    protocols: ["https"]
+    strip_path: false
+
+  # Endpoints de métricas y seguridad
+  - name: metrics
+    paths: ["/metrics/", "/security/"]
+    protocols: ["https"]
+    strip_path: false
