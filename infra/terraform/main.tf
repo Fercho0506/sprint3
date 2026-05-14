@@ -279,7 +279,7 @@ resource "aws_launch_template" "api_server" {
     # ----------------------------------------------------------
     mkdir -p /opt/sprint3
     if [ ! -d "/opt/sprint3/.git" ]; then
-        git clone https://github.com/Teban1101/sprint3 /opt/sprint3
+        git clone https://github.com/Fercho0506/sprint3 /opt/sprint3
     fi
     cd /opt/sprint3
 
