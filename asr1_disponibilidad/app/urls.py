@@ -5,5 +5,5 @@ urlpatterns = [
     path("health/", HealthCheckView.as_view(), name="health"),
     path("metrics/availability/", AvailabilityMetricsView.as_view(), name="availability_metrics"),
     path("reports/monthly/", MonthlyReportView.as_view(), name="monthly_report"),
-    path("api/v1/", include("asr2_integridad.app.urls")),
+    path("", include("asr2_integridad.app.urls")),
 ]
