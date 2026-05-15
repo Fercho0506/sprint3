@@ -258,43 +258,42 @@ resource "aws_launch_template" "api_server" {
     }
   }
 
-  user_data = base64encode(<<-EOF
-    #!/bin/bash
-    set -e
+user_data = base64encode(<<-EOF
+#!/bin/bash
+set -xe
 
-    # Guardar logs del arranque
-    exec > >(tee /var/log/user-data.log)
-    exec 2>&1
+echo "Iniciando bootstrap..."
 
-    echo "Iniciando bootstrap..."
+# ----------------------------------------------------------
+# Instalar dependencias
+# ----------------------------------------------------------
+apt-get update -y
+apt-get install -y git python3-pip python3-venv
 
-    # ----------------------------------------------------------
-    # Instalar dependencias
-    # ----------------------------------------------------------
-    apt-get update -y
-    apt-get install -y git python3-pip python3-venv
+# ----------------------------------------------------------
+# Clonar proyecto
+# ----------------------------------------------------------
+mkdir -p /opt/sprint3
 
-    # ----------------------------------------------------------
-    # Clonar proyecto
-    # ----------------------------------------------------------
-    mkdir -p /opt/sprint3
-    if [ ! -d "/opt/sprint3/.git" ]; then
-        git clone https://github.com/Fercho0506/sprint3 /opt/sprint3
-    fi
-    cd /opt/sprint3
+if [ ! -d "/opt/sprint3/.git" ]; then
+    git clone https://github.com/Fercho0506/sprint3 /opt/sprint3
+fi
 
-    # ----------------------------------------------------------
-    # Crear entorno virtual
-    # ----------------------------------------------------------
-    python3 -m venv venv
-    ./venv/bin/pip install --upgrade pip
-    ./venv/bin/pip install --no-cache-dir -r requirements.txt
-    ./venv/bin/pip install gunicorn
+cd /opt/sprint3
 
-    # ----------------------------------------------------------
-    # Variables de entorno (Usando /etc/environment para persistencia)
-    # ----------------------------------------------------------
-    cat <<EOV >/etc/environment
+# ----------------------------------------------------------
+# Crear entorno virtual
+# ----------------------------------------------------------
+python3 -m venv venv
+
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install --no-cache-dir -r requirements.txt
+./venv/bin/pip install gunicorn
+
+# ----------------------------------------------------------
+# Variables de entorno persistentes
+# ----------------------------------------------------------
+cat <<EOV >/etc/environment
 DJANGO_SETTINGS_MODULE=asr1_disponibilidad.app.settings
 DB_HOST=${aws_db_instance.postgres.address}
 DB_NAME=finops
@@ -304,28 +303,35 @@ REDIS_URL=redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0
 HMAC_SECRET_KEY=${var.hmac_secret_key}
 EOV
 
-    set -a
-    . /etc/environment
-    set +a
+set -a
+source /etc/environment
+set +a
 
-    # ----------------------------------------------------------
-    # Ejecutar migraciones
-    # ----------------------------------------------------------
-    cd /opt/sprint3/asr1_disponibilidad
-    ../venv/bin/python manage.py migrate --noinput
+# ----------------------------------------------------------
+# Esperar a RDS/Redis
+# ----------------------------------------------------------
+sleep 60
 
-    # ----------------------------------------------------------
-    # Ejecutar Gunicorn
-    # ----------------------------------------------------------
-    nohup ../venv/bin/gunicorn \
-    asr1_disponibilidad.app.wsgi:application \
-    --bind 0.0.0.0:8000 \
-    --workers 3 \
-    > /var/log/gunicorn.log 2>&1 &
+# ----------------------------------------------------------
+# Migraciones Django
+# ----------------------------------------------------------
+cd /opt/sprint3
 
-    echo "Bootstrap completado"
-  EOF
-  )
+./venv/bin/python manage.py migrate --noinput
+
+# ----------------------------------------------------------
+# Arrancar Gunicorn
+# ----------------------------------------------------------
+nohup ./venv/bin/gunicorn \
+asr1_disponibilidad.app.wsgi:application \
+--bind 0.0.0.0:8000 \
+--workers 3 \
+> /var/log/gunicorn.log 2>&1 &
+
+echo "Bootstrap completado"
+
+EOF
+)
 
   tag_specifications {
     resource_type = "instance"
